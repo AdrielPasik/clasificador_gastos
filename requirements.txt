@@ -1,0 +1,7 @@
+# Lista de dependencias
+pytesseract
+opencv-python
+pillow
+numpy
+pandas
+streamlit
