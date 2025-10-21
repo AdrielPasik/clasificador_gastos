@@ -26,8 +26,10 @@ pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tessera
 #  - Si tesseract no está en PATH, ajusta la variable tesseract_cmd arriba.
 # -------------------------------------------------------------
 
-ruta = os.path.join(os.path.dirname(__file__), '..', 'data', 'ticket2.png')
-if not os.path.isfile(ruta):
+# Editable: set IMAGE_PATH to the file you want to inspect (relative to repo or absolute)
+IMAGE_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'ticket2.png')
+ruta = IMAGE_PATH
+if not os.path.isabs(ruta):
     ruta = os.path.abspath(ruta)
 print('Image path:', ruta)
 img = cv2.imread(ruta)

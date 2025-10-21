@@ -4,106 +4,152 @@ Proyecto: Clasificador Inteligente de Gastos desde Tickets
 =========================================================
 
 Este repositorio contiene código para tomar fotos o imágenes de tickets (boletas), extraer texto mediante OCR (Tesseract) y obtener datos estructurados: fecha, comercio y monto. También incluye heurísticas para mejorar el OCR en tickets reales y utilidades para depuración.
+# clasificador_gastos
+
+Proyecto: Clasificador Inteligente de Gastos desde Tickets
+=========================================================
+
+Este repositorio contiene código para tomar fotos o imágenes de tickets (boletas), extraer texto mediante OCR (Tesseract) y obtener datos estructurados: fecha, comercio y monto. También incluye heurísticas y herramientas de depuración.
 
 Estructura del repositorio
----------------------------
+# clasificador_gastos
 
-- data/
-	- Contiene imágenes de tickets de prueba. Por ejemplo `ticket1.jpg`, `ticket2.png`.
+Proyecto: Clasificador Inteligente de Gastos desde Tickets
+=========================================================
 
-- src/
-	- Código fuente principal del proyecto.
-	- `__init__.py` : convierte `src` en paquete Python.
-	- `procesamiento.py` : funciones para preprocesado de imágenes (vacío/plantilla).
-	- `ocr.py` : núcleo del OCR. Contiene `preprocesar_ticket` y `extraer_texto` con múltiples pipelines y heurísticas para extraer `texto`, `monto` y `fecha`.
-	- `analisis.py` : funciones para extraer campos específicos (fecha, monto) y procesamiento posterior (vacío/plantilla).
-	- `clasificador.py` : reglas o modelo para categorizar gastos (vacío/plantilla).
-	- `almacenamiento.py` : guardar registros en CSV o SQLite (vacío/plantilla).
+Este repositorio contiene código para tomar fotos o imágenes de tickets (boletas), extraer texto mediante OCR (Tesseract) y obtener datos estructurados: fecha, comercio y monto. También incluye heurísticas y herramientas de depuración.
 
-- tools/
-	- Utilidades para desarrollar y depurar:
-	- `dump_tokens.py` : script para volcar los tokens que Tesseract detecta (texto, confianza y coordenadas). Útil para localizar fechas/montos y ajustar ROIs.
-	- `run_ticket1.py` : script de ejemplo que carga `src.ocr.extraer_texto` y ejecuta el pipeline sobre `data/ticket1.jpg`. Útil para tests rápidos.
+## Estructura del repositorio
 
-- app.py
-	- Interfaz web (por implementar, sugerencia: Streamlit). Archivo creado en blanco por ahora.
+- `data/` — imágenes de tickets de prueba. Ej.: `ticket1.jpg`, `ticket2.jpg`.
+- `src/` — código principal (OCR, preprocesado, análisis, utilidades). Punto de entrada público: `src.ocr.extraer_texto(ruta)`.
+- `tools/` — utilidades para debug y pruebas: `run_image.py`, `debug_image.py`, `dump_tokens.py`, `dump_all_tokens.py`, `inspect_monto_methods.py`.
+- `tests/` — suite pytest con tests parametrizados.
+- `results/` — (opcional) salida JSON guardada por `tools/run_image.py` si se habilita.
+- `archive/` — copias de scripts y tests ticket-specific archivados.
 
-- requirements.txt
-	- Dependencias del proyecto (OpenCV, pytesseract, numpy, pandas, streamlit, etc.).
+## Requisitos básicos
 
-Archivos agregados para desarrollo
----------------------------------
-- `tools/dump_tokens.py` (herramienta de depuración)
-	- Objetivo: ejecutar `pytesseract.image_to_data` sobre una imagen y volcar los tokens que contienen dígitos, barras, dos puntos, etc., junto con su confianza y coordenadas (left, top, width, height).
-	- Uso típico: ayuda a encontrar dónde Tesseract detecta la hora y la fecha en el ticket para después recortar esa zona (ROI) y aplicar OCR más agresivo.
+1) Python 3.10+; usar virtualenv recomendado.
 
-- `tools/run_ticket1.py` (script de prueba)
-	- Objetivo: ejemplo de cómo importar `src.ocr.extraer_texto` y ejecutar el pipeline sobre `ticket1.jpg`. Muestra el texto extraído, confianza, monto y fecha.
+2) Instalar dependencias:
 
-Recomendaciones de uso (rápido)
-------------------------------
-1) Instalar dependencias (recomendado usar un venv):
+```powershell
+python -m venv venv; & .\venv\Scripts\Activate.ps1; python -m pip install -r requirements.txt
+```
 
-	 python -m venv venv
-	 .\.venv\Scripts\Activate.ps1  # PowerShell
-	 python -m pip install -r requirements.txt
+3) Instalar Tesseract (binario) en Windows (ejemplo con Chocolatey):
 
-2) Instalar Tesseract (binario) en Windows
-	 - Descargar el instalador desde las releases oficiales o usar Chocolatey:
-		 choco install -y tesseract
-	 - Asegurarse de que `tesseract.exe` esté en PATH o ajustar `pytesseract.pytesseract.tesseract_cmd` en `src/ocr.py`.
+```powershell
+choco install -y tesseract
+```
 
-3) Probar el extractor en un ticket de ejemplo:
+Comprobar instalación:
 
-	 & "venv\Scripts\python.exe" tools\run_ticket1.py
+```powershell
+where.exe tesseract; tesseract --version
+```
 
-4) Depuración: si la fecha o monto no aparecen, ejecutar:
+## Cómo testear tickets (3 formas)
 
-	 & "venv\Scripts\python.exe" tools\dump_tokens.py
+Aquí hay tres formas sencillas de ejecutar el extractor sobre una imagen y obtener la salida JSON.
 
-	 Revisar la salida para ver las coordenadas y confidencias de tokens que contienen dígitos o ':' o '/'.
+- Método A — Usar la variable de entorno `TEST_IMAGE` con el test runner (recomendado para pruebas rápidas):
 
-Notas y próximos pasos
----------------------
-- Integrar una UI con Streamlit para subir imágenes y mostrar ROI/intervenciones visuales.
-- Añadir un paso de post-procesamiento (normalización de montos, corrección ortográfica y limpieza) antes de guardar.
-- Crear tests unitarios para garantizar que la extracción funciona con varios formatos de tickets.
+	```powershell
+	$env:TEST_IMAGE = 'ticket2.jpg'   # nombre relativo dentro de data/ o ruta absoluta
+	& "venv\Scripts\python.exe" -m pytest tests/test_run_image.py -q
+	```
 
-Contacto
---------
-Si algo no funciona en tu entorno, revisa: la versión de Python, que `tesseract.exe` esté instalado y que el venv sea el que usa VS Code para que Pylance encuentre las dependencias.
+	Esto ejecuta el test que carga `TEST_IMAGE` y ejecuta `extraer_texto`, imprimiendo el JSON resultante.
 
-INSTALAR!
-TESSERACT : https://github.com/UB-Mannheim/tesseract/wiki
+- Método B — Editar `IMAGE_PATH` en `tools/run_image.py` (útil para debugging interactivo):
 
-LUEGO  Añadir Tesseract al PATH de Windows
+	1. Abrí `tools/run_image.py` y modificá la constante `IMAGE_PATH` al inicio del archivo para apuntar a la imagen deseada.
+	2. Ejecutá:
 
-Si querés que cualquier programa (Python o cmd) lo reconozca:
+	```powershell
+	& "venv\Scripts\python.exe" tools\run_image.py
+	```
 
-Abre PowerShell como Administrador.
+	El script imprimirá la salida JSON en stdout. Por defecto `raw_data` se suprime para legibilidad; podés activar `raw_data` si necesitás más detalles.
 
-Ejecuta:
+- Método C — One-liner Python (rápido, sin editar archivos):
 
-$old = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-$new = $old + ';C:\Program Files\Tesseract-OCR'
-[Environment]::SetEnvironmentVariable('Path', $new, 'Machine')
+	```powershell
+	& "venv\Scripts\python.exe" -c "from src.ocr import extraer_texto; import json; r=extraer_texto('./data/ticket2.jpg'); print(json.dumps(r, ensure_ascii=False, indent=2))"
+	```
 
+## Cómo ejecutar la suite de tests
 
-Cierra PowerShell o VS Code y vuelve a abrirlo.
+- Ejecutar toda la suite:
 
-Prueba en PowerShell:
+```powershell
+& "venv\Scripts\python.exe" -m pytest -q
+```
 
-where.exe tesseract
-tesseract --version
+- Ejecutar un test específico que usa `TEST_IMAGE` si está definida:
 
-INSTALAR el idioma español si no está
+```powershell
+& "venv\Scripts\python.exe" -m pytest tests/test_run_image.py -q
+```
 
-IR a:
+## Flujo del proyecto (qué hace cada carpeta)
 
-C:\Program Files\Tesseract-OCR\tessdata
+- `data/` — Imágenes de ejemplo y datos de prueba. Pon aquí tus fotos para ejecutarlas con las herramientas.
+- `src/` — Implementación del pipeline OCR:
+	- `src/ocr.py` — Orquestador público; devuelve JSON con `id_imagen`, `text_raw`, `mean_confidence` y `fields` (monto/fecha) incluyendo `raw`, `normalized`, `value` y `confidence`.
+	- `src/procesamiento.py` — Preprocesado de imagen y wrappers de Tesseract (incluye multi-scale y ROI second-pass).
+	- `src/analisis.py` — Heurísticas para extraer monto y fecha (por boxes, líneas, tokens cercanos, ROI 'TOTAL').
+	- `src/utils.py` — Normalizaciones (`normalize_monto`, `normalize_date`) y utilidades.
+- `tools/` — Scripts de apoyo para debugging y desarrollo: runners, dumpers de tokens y comparadores de heurísticas.
+- `tests/` — Tests automatizados (pytest). Los tests son parametrizables para poder ejecutar sobre cualquier imagen.
+- `results/` — Carpeta opcional donde `tools/run_image.py` puede guardar JSON de salida para trazabilidad.
+- `archive/` — Copias de scripts y tests ticket-specific que se retiraron del flujo principal.
 
+## Debugging y utilidades
 
-Si no existe spa.traineddata, descárgalo de aquí:
-Tesseract traineddata files
+- `tools/dump_tokens.py` / `tools/dump_all_tokens.py`: listan tokens, coordenadas y confianzas (útil para inspeccionar output de Tesseract).
+- `tools/debug_image.py`: reconstruye líneas y muestra tokens cercanos a la palabra 'TOTAL' y números detectados.
+- `tools/inspect_monto_methods.py`: compara las distintas heurísticas de extracción y ayuda a entender cuál ganó.
 
-Busca spa.traineddata y ponlo en tessdata.
+## Salida JSON esperada
+
+La función `extraer_texto(ruta)` devuelve un dict con al menos:
+
+- `id_imagen` — nombre/ID de la imagen.
+- `text_raw` — texto crudo concatenado extraído por OCR.
+- `mean_confidence` — confianza media general (0-100).
+- `fields` — diccionario con campos esperados, por ejemplo `monto` y `fecha`. Cada campo incluye:
+	- `raw` — texto tal como lo devolvió la heurística.
+	- `normalized` — valor normalizado (ej.: monto en formato decimal con punto).
+	- `value` — número (float) cuando aplica.
+	- `confidence` — confianza asociada (0..1).
+
+Ejemplo breve (impreso por los tools):
+
+```json
+{
+	"id_imagen": "ticket2.jpg",
+	"mean_confidence": 74.9,
+	"fields": {
+		"monto": { "raw": "59,95", "normalized": "59.95", "value": 59.95, "confidence": 0.78 },
+		"fecha": { "raw": "23/09/2025", "normalized": "2025-09-23", "confidence": 0.91 }
+	}
+}
+```
+
+## Próximos pasos sugeridos
+
+1) Afinar ROI second-pass y multi-scale ensemble cuando la confianza sea baja.
+2) Recolectar un pequeño dataset etiquetado (ground-truth) y añadir tests de regresión que verifiquen valores normalizados.
+3) Integrar una pequeña UI (Streamlit) para validar manualmente y guardar JSON en `results/`.
+
+Si querés, puedo:
+
+- Añadir un ejemplo en `tools/run_image.py` que guarde JSON en `results/` automáticamente.
+- Ejecutar ahora el ROI second-pass sobre `ticket2.jpg` y mostrar el JSON antes/después para comparar.
+
+---
+
+Gracias — decime cuál de las dos acciones siguientes preferís: (A) que añada guardado automático en `tools/run_image.py`, o (B) que ejecute el ROI second-pass ahora sobre `ticket2.jpg` y te muestre resultados.

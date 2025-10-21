@@ -4,6 +4,23 @@ import numpy as np
 import os
 import re
 
+from .procesamiento import run_pipeline, preproc_alterno, preprocesar_ticket
+from .procesamiento import ocr_multi_scale, roi_second_pass
+from .analisis import (
+    extraer_monto,
+    extraer_fecha,
+    extraer_monto_avanzado,
+    extraer_monto_por_boxes,
+    extraer_fecha_avanzada,
+    reconstruct_lines_from_data,
+    extraer_monto_por_lines,
+    extraer_fecha_por_lines,
+    extraer_fecha_por_tokens,
+    scan_header_for_date,
+)
+from .utils import normalize_monto, normalize_date
+from .utils import clean_text_for_amount, field_confidence
+
 # --- Configuración de Tesseract ---
 """OCR utilities for clasificador_gastos
 
@@ -91,56 +108,21 @@ def extraer_texto(ruta_imagen):
     if not os.path.isfile(ruta_imagen):
         raise FileNotFoundError(f"No se pudo encontrar la imagen: {ruta_imagen}")
     # Probamos múltiples pipelines y configuraciones, luego elegimos la salida con mayor confianza media
-    def run_pipeline(img_proc, psm):
-        cfg = f"--oem 3 --psm {psm}"
-        try:
-            data = pytesseract.image_to_data(img_proc, lang='spa', config=cfg, output_type=pytesseract.Output.DICT)
-        except Exception:
-            text_raw = pytesseract.image_to_string(img_proc, lang='spa', config=cfg)
-            return {'text': text_raw, 'mean_confidence': None, 'raw_data': None}
-
-        words = []
-        confs = []
-        for i, w in enumerate(data.get('text', [])):
-            word = w.strip()
-            conf = data.get('conf', [])[i]
-            try:
-                conf_val = int(conf)
-            except Exception:
-                try:
-                    conf_val = int(float(conf))
-                except Exception:
-                    conf_val = -1
-            if word and conf_val > 25:
-                words.append(word)
-                confs.append(conf_val)
-
-        text_join = ' '.join(words)
-        if not text_join:
-            text_join = pytesseract.image_to_string(img_proc, lang='spa', config=cfg)
-
-        mean_conf = sum(confs) / len(confs) if confs else None
-        text_join = re.sub(r"\s+", ' ', text_join).strip()
-        return {'text': text_join, 'mean_confidence': mean_conf, 'raw_data': data}
+    # ahora usamos run_pipeline importado desde src.procesamiento
 
     # pipeline 1: el actual preprocesado
     p1 = preprocesar_ticket(ruta_imagen)
     # pipeline 2: invertido (por si el texto quedó blanco sobre negro)
     p2 = cv2.bitwise_not(p1)
     # pipeline 3: reprocesado con parámetros alternativos (más agresivo)
-    def preproc_alterno(ruta):
-        img = cv2.imread(ruta)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
-        g = clahe.apply(gray)
-        den = cv2.bilateralFilter(g, 9, 75, 75)
-        _, th = cv2.threshold(den, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        h, w = th.shape
-        scale = max(1.0, 1800 / float(w))
-        th = cv2.resize(th, (int(w*scale), int(h*scale)), interpolation=cv2.INTER_CUBIC)
-        return th
-
     p3 = preproc_alterno(ruta_imagen)
+
+    # Ejecutar OCR multi-scale para obtener una referencia robusta
+    try:
+        ms_best = ocr_multi_scale(ruta_imagen, scales=(1.0, 1.5, 2.0), psm_list=(6,))
+        raw_orig = ms_best.get('raw_data')
+    except Exception:
+        raw_orig = None
 
     candidates = []
     # probar combinaciones de psm
@@ -155,19 +137,70 @@ def extraer_texto(ruta_imagen):
     mean_conf = best['mean_confidence']
     # Forzar un image_to_data sobre la imagen preprocesada principal (p1)
     # y usarlo como raw_data de referencia para heurísticas basadas en posiciones.
-    try:
-        from pytesseract import Output
-        final_raw = pytesseract.image_to_data(p1, lang='spa', config='--oem 3 --psm 6', output_type=Output.DICT)
-    except Exception:
-        final_raw = best.get('raw_data')
+    # Preferir raw_orig (OCR sobre imagen original) para heurísticas de posición
+    if raw_orig:
+        final_raw = raw_orig
+    else:
+        try:
+            from pytesseract import Output
+            final_raw = pytesseract.image_to_data(p1, lang='spa', config='--oem 3 --psm 6', output_type=Output.DICT)
+        except Exception:
+            final_raw = best.get('raw_data')
 
-    # Mejor heurística para monto: buscar líneas que contengan 'total' o 'subtotal' o últimas líneas numéricas
-    monto = extraer_monto_avanzado(texto_limpio)
-    # Si no encontró monto textual, intentar por boxes (posición en el ticket)
+
+    # Priorizar heurísticas basadas en posición/lineas porque suelen ser más fiables
+    monto = None
+    if final_raw:
+        # 1) boxes (zona inferior / derecha)
+        try:
+            monto_boxes = extraer_monto_por_boxes(final_raw)
+            if monto_boxes:
+                monto = monto_boxes
+        except Exception:
+            monto = None
+
+        # 2) líneas reconstruidas a partir de final_raw
+        if monto is None:
+            try:
+                lines_final = reconstruct_lines_from_data(final_raw)
+                monto_lines = extraer_monto_por_lines(lines_final)
+                if monto_lines:
+                    monto = monto_lines
+            except Exception:
+                pass
+
+        # 3) heurística alrededor de 'TOTAL' (mejorada)
+        if monto is None:
+            try:
+                from .analisis import extraer_monto_cerca_total_improved
+                m_total = extraer_monto_cerca_total_improved(final_raw)
+                if m_total:
+                    monto = m_total
+            except Exception:
+                pass
+
+        # 4) token proximity (pares de tokens como '59' + '95')
+        if monto is None:
+            try:
+                from .analisis import extraer_monto_por_tokens_proximity
+                monto_tokprox = extraer_monto_por_tokens_proximity(final_raw)
+                if monto_tokprox:
+                    monto = monto_tokprox
+            except Exception:
+                pass
+
+    # Si aún no, usar la heurística textual avanzada
+    if monto is None:
+        monto = extraer_monto_avanzado(texto_limpio)
+
+    # ROI second-pass: recortar alrededor de TOTAL y re-OCR con whitelist
     if monto is None and final_raw:
-        monto_boxes = extraer_monto_por_boxes(final_raw)
-        if monto_boxes:
-            monto = monto_boxes
+        try:
+            roi_m = roi_second_pass(ruta_imagen, final_raw)
+            if roi_m:
+                monto = roi_m
+        except Exception:
+            pass
 
     # Fecha: intentar heurística avanzada (priorizar zona superior usando final_raw)
     fecha = None
@@ -233,13 +266,86 @@ def extraer_texto(ruta_imagen):
             if fecha_header:
                 fecha = fecha_header
 
-    return {
-        'text': texto_limpio,
+    result = {
+        'id_imagen': os.path.basename(ruta_imagen),
+        'text_raw': texto_limpio,
         'mean_confidence': mean_conf,
-        'monto': monto,
-        'fecha': fecha,
+        'fields': {
+            'monto': {
+                'raw': monto,
+                'normalized': None,
+            },
+            'fecha': {
+                'raw': fecha,
+                'normalized': None,
+            }
+        },
         'raw_data': best.get('raw_data'),
     }
+
+    # Normalizar monto y fecha cuando sea posible
+    # Preparar token_conf si tenemos raw_data: intentar buscar token matching
+    token_conf = None
+    method_conf = 0.5
+    try:
+        fr = final_raw
+        if fr and result['fields']['monto']['raw']:
+            # buscar token exacto o parcial y tomar su conf
+            txts = fr.get('text', [])
+            confs = fr.get('conf', [])
+            target = str(result['fields']['monto']['raw']).strip()
+            # direct match
+            for i, t in enumerate(txts):
+                if str(t).strip() == target:
+                    try:
+                        token_conf = int(float(confs[i]))
+                        break
+                    except Exception:
+                        token_conf = None
+            # si no match directo, buscar token que contenga los dígitos
+            if token_conf is None:
+                pat = re.sub(r"[^0-9]", '', target)
+                if pat:
+                    for i, t in enumerate(txts):
+                        if pat and pat in re.sub(r"[^0-9]", '', str(t)):
+                            try:
+                                token_conf = int(float(confs[i]))
+                                break
+                            except Exception:
+                                token_conf = None
+    except Exception:
+        token_conf = None
+
+    # limpiar texto del monto antes de normalizar
+    try:
+        cleaned = clean_text_for_amount(result['fields']['monto']['raw'])
+        val, norm = normalize_monto(cleaned)
+        result['fields']['monto']['normalized'] = norm
+        result['fields']['monto']['value'] = val
+    except Exception:
+        result['fields']['monto']['normalized'] = None
+        result['fields']['monto']['value'] = None
+
+    # calcular confidence final del campo
+    try:
+        fc = field_confidence(method_conf=method_conf, token_conf=token_conf, mean_conf=result.get('mean_confidence'))
+        result['fields']['monto']['confidence'] = fc
+    except Exception:
+        result['fields']['monto']['confidence'] = 0.0
+
+    try:
+        norm_date = normalize_date(result['fields']['fecha']['raw'])
+        result['fields']['fecha']['normalized'] = norm_date
+    except Exception:
+        result['fields']['fecha']['normalized'] = None
+
+    # confidence for fecha (simple heuristic)
+    try:
+        result['fields']['fecha']['confidence'] = field_confidence(method_conf=0.5, token_conf=None, mean_conf=result.get('mean_confidence'))
+    except Exception:
+        result['fields']['fecha']['confidence'] = 0.0
+
+    return result
 
 def preprocesar_ticket(ruta_imagen):
     # 1️⃣ Leer imagen
