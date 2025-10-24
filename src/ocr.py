@@ -117,12 +117,11 @@ def extraer_texto(ruta_imagen):
     # pipeline 3: reprocesado con parámetros alternativos (más agresivo)
     p3 = preproc_alterno(ruta_imagen)
 
-    # Ejecutar OCR multi-scale para obtener una referencia robusta
+    # Ejecutar OCR multi-scale para obtener una referencia robusta del texto (no usar sus coords para heurísticas posicionales)
     try:
         ms_best = ocr_multi_scale(ruta_imagen, scales=(1.0, 1.5, 2.0), psm_list=(6,))
-        raw_orig = ms_best.get('raw_data')
     except Exception:
-        raw_orig = None
+        ms_best = None
 
     candidates = []
     # probar combinaciones de psm
@@ -133,19 +132,35 @@ def extraer_texto(ruta_imagen):
     # Elegir la mejor por mean_confidence
     best = max(candidates, key=lambda c: (c['mean_confidence'] or 0))
 
-    texto_limpio = best['text']
+    # establecer mean_conf primero
     mean_conf = best['mean_confidence']
+    texto_limpio = best['text']
+    # si multi-scale tiene confianza comparable o superior, preferir su texto y raw_data
+    use_ms_raw = False
+    try:
+        if ms_best and (ms_best.get('mean_confidence') is not None):
+            ms_conf = ms_best.get('mean_confidence') or 0
+            base_conf = mean_conf or 0
+            # preferir ms_best si es mejor o está muy cerca (>=90%)
+            if ms_conf >= base_conf or ms_conf >= base_conf * 0.9:
+                texto_limpio = ms_best.get('text') or texto_limpio
+                use_ms_raw = True
+    except Exception:
+        use_ms_raw = False
     # Forzar un image_to_data sobre la imagen preprocesada principal (p1)
-    # y usarlo como raw_data de referencia para heurísticas basadas en posiciones.
-    # Preferir raw_orig (OCR sobre imagen original) para heurísticas de posición
-    if raw_orig:
-        final_raw = raw_orig
-    else:
-        try:
-            from pytesseract import Output
-            final_raw = pytesseract.image_to_data(p1, lang='spa', config='--oem 3 --psm 6', output_type=Output.DICT)
-        except Exception:
+    # Usar las coordenadas devueltas por el mejor pipeline (`best.get('raw_data')`) para heurísticas posicionales.
+    try:
+        from pytesseract import Output
+        # preferir raw_data de ms_best si hemos decidido usarlo y está presente
+        final_raw = None
+        if use_ms_raw and ms_best and ms_best.get('raw_data'):
+            final_raw = ms_best.get('raw_data')
+        if final_raw is None:
             final_raw = best.get('raw_data')
+        if final_raw is None:
+            final_raw = pytesseract.image_to_data(p1, lang='spa', config='--oem 3 --psm 6', output_type=Output.DICT)
+    except Exception:
+        final_raw = best.get('raw_data')
 
 
     # Priorizar heurísticas basadas en posición/lineas porque suelen ser más fiables
@@ -192,6 +207,17 @@ def extraer_texto(ruta_imagen):
     # Si aún no, usar la heurística textual avanzada
     if monto is None:
         monto = extraer_monto_avanzado(texto_limpio)
+
+    # Post-check determinista: si en el texto limpio aparece un token con decimales
+    # y la palabra 'TOTAL' aparece cerca (en el mismo texto), preferir ese token.
+    try:
+        if texto_limpio:
+            m = re.findall(r"\d+[\.,]\d{2}", texto_limpio)
+            if m and (re.search(r"\bTOTAL\b", texto_limpio, re.IGNORECASE)):
+                # preferir el último match (más cerca del final)
+                monto = m[-1]
+    except Exception:
+        pass
 
     # ROI second-pass: recortar alrededor de TOTAL y re-OCR con whitelist
     if monto is None and final_raw:
@@ -265,6 +291,40 @@ def extraer_texto(ruta_imagen):
             fecha_header = scan_header_for_date(ruta_imagen)
             if fecha_header:
                 fecha = fecha_header
+
+    # Último recurso para monto: buscar token numérico de alta confianza en final_raw
+    def find_high_conf_numeric_token(raw):
+        if not raw:
+            return None
+        texts = raw.get('text', [])
+        confs = raw.get('conf', [])
+        best_tok = None
+        best_conf = -1
+        # permitir números como 14499,00 (sin separador de miles) o con separadores
+        num_re = re.compile(r"\d+(?:[\.,]\d{2})")
+        for i, t in enumerate(texts):
+            if not str(t).strip():
+                continue
+            try:
+                c = int(float(confs[i]))
+            except Exception:
+                c = -1
+            # requerir al menos 50 de confianza para preferir tokens muy fiables
+            if c < 50:
+                continue
+            if num_re.search(str(t)):
+                if c > best_conf:
+                    best_conf = c
+                    best_tok = str(t).strip()
+        return best_tok
+
+    if monto is None and final_raw:
+        try:
+            highconf = find_high_conf_numeric_token(final_raw)
+            if highconf:
+                monto = highconf
+        except Exception:
+            pass
 
     result = {
         'id_imagen': os.path.basename(ruta_imagen),
@@ -477,25 +537,27 @@ def extraer_monto_por_boxes(raw_data):
     max_bottom = max(e['top'] + e['h'] for e in entries)
     height = max_bottom if max_bottom > 0 else max(e['top'] for e in entries)
 
-    # Considerar la zona inferior (último 40%)
-    threshold_top = height * 0.6
+    # Considerar la zona inferior (último 40% -> ajustado a 50% para captar montos
+    # que aparecen algo más arriba en tickets reales)
+    threshold_top = height * 0.5
     bottom_entries = [e for e in entries if e['top'] >= threshold_top]
     if not bottom_entries:
         bottom_entries = entries
 
-    # patrón robusto de montos
-    pattern_num = re.compile(r"\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2})$")
+    # patrón robusto de montos: permitir números con o sin separador de miles y con decimales
+    amount_re = re.compile(r"\d+(?:[\.,]\d{2})")
 
-    currency_tokens = [e for e in bottom_entries if pattern_num.search(e['text'])]
+    # Preferir tokens que parezcan montos (tengan decimales)
+    currency_tokens = [e for e in bottom_entries if amount_re.search(e['text'])]
     if currency_tokens:
-        # ordenar por posición (right) y preferir mayor confianza
-        currency_tokens.sort(key=lambda e: (e['right'], e['conf']))
+        # elegir por mayor confianza y luego por posición derecha
+        currency_tokens.sort(key=lambda e: (e['conf'] or 0, e['right']))
         return currency_tokens[-1]['text']
 
-    # fallback: buscar cualquier token numérico en bottom_entries
+    # fallback: buscar cualquier token numérico en bottom_entries, preferir por confianza
     nums = [e for e in bottom_entries if re.search(r"\d", e['text'])]
     if nums:
-        nums.sort(key=lambda e: (e['right'], e['conf']))
+        nums.sort(key=lambda e: (e['conf'] or 0, e['right']))
         return nums[-1]['text']
 
     return None

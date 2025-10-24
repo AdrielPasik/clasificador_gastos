@@ -4,8 +4,17 @@ from src.ocr import extraer_texto
 
 def test_ticket2_has_fields():
     base = os.path.dirname(os.path.dirname(__file__))
-    img = os.path.join(base, 'data', 'ticket2.jpg')
-    assert os.path.exists(img), f"Imagen de prueba no encontrada: {img}"
+    # prefer archive/data but fall back to repo root data/
+    candidates = [
+        os.path.join(base, 'data', 'ticket2.jpg'),
+        os.path.join(os.path.dirname(base), 'data', 'ticket2.jpg')
+    ]
+    img = None
+    for p in candidates:
+        if os.path.exists(p):
+            img = p
+            break
+    assert img is not None, f"Imagen de prueba no encontrada en {candidates}"
 
     res = extraer_texto(img)
     # Estructura mínima esperada

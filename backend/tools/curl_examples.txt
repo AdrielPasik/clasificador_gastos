@@ -1,0 +1,8 @@
+# curl (Linux/macOS) example
+curl -X POST \
+  -F "file=@/path/to/ticket2.jpg;type=image/jpeg" \
+  http://localhost:8000/api/ocr
+
+# PowerShell example (Windows)
+# Use Invoke-RestMethod or curl alias which maps to Invoke-WebRequest in PowerShell
+Invoke-RestMethod -Uri http://localhost:8000/api/ocr -Method Post -InFile "/path/to/ticket2.jpg" -ContentType "multipart/form-data"

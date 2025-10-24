@@ -138,6 +138,8 @@ Ejemplo breve (impreso por los tools):
 	}
 }
 ```
+COMO PRENDER EL BACK?  python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+![alt text](image.png)
 
 ## Próximos pasos sugeridos
 
@@ -148,8 +150,5 @@ Ejemplo breve (impreso por los tools):
 Si querés, puedo:
 
 - Añadir un ejemplo en `tools/run_image.py` que guarde JSON en `results/` automáticamente.
-- Ejecutar ahora el ROI second-pass sobre `ticket2.jpg` y mostrar el JSON antes/después para comparar.
-
----
-
-Gracias — decime cuál de las dos acciones siguientes preferís: (A) que añada guardado automático en `tools/run_image.py`, o (B) que ejecute el ROI second-pass ahora sobre `ticket2.jpg` y te muestre resultados.
+- Ejecutar ahora el ROI second-pass sobre `ticket2.jpg` y mostrar el JSON antes/después para 
+- 

@@ -1,24 +1,11 @@
-import pytesseract, cv2
-from pytesseract import Output
-import os
+"""DEPRECATED TOOL
 
-# Ruta al ejecutable Tesseract en Windows (ajusta si tu instalación difiere)
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-
-# -------------------------------------------------------------
-# dump_tokens.py
-# -------------------------------------------------------------
-# Este script se usa para depurar la salida de Tesseract.
-# Objetivo:
-#  - Ejecutar pytesseract.image_to_data sobre una imagen de ticket.
-#  - Listar tokens que contienen dígitos, ':' o '/' (hora/fechas/montos)
-#  - Mostrar su confianza (conf) y coordenadas (left, top, width, height)
-#
-# Uso:
-#  - Activa tu venv y corre:
-#      & "venv\Scripts\python.exe" tools\dump_tokens.py
-#  - Observa la salida en consola y identifica la posición de la hora/fecha/monto.
-#  - Con esa información puedes recortar una ROI y aplicar un OCR más agresivo.
+This tool was used for local debugging and referenced specific ticket files.
+It has been removed from the project to keep the repository free of
+ticket-specific debugging scripts. If you need a token dump utility, please
+use the OCR API (`backend/main.py`) or implement a new generic tool that
+accepts an input image path.
+"""
 #
 # Notas:
 #  - El script prueba dos configuraciones de Tesseract: PSM=6 y PSM=7

@@ -1,0 +1,40 @@
+{
+  "info": {
+    "name": "OCR Backend",
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef0123456789",
+    "description": "Collection to test /api/ocr endpoint",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "POST /api/ocr",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "path/to/ticket.jpg"
+            }
+          ]
+        },
+        "url": {
+          "raw": "http://localhost:8000/api/ocr",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "api",
+            "ocr"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}

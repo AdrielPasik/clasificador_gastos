@@ -1,0 +1,72 @@
+Frontend AI Integration Prompt
+
+Purpose
+-------
+This document tells the frontend AI how to call the OCR backend and what to expect in return. Use it as the instruction for any agent that will act as the frontend or integrator.
+
+Endpoint
+--------
+URL: http://{BACKEND_HOST}:{PORT}/api/ocr
+Method: POST
+Content-Type: multipart/form-data
+Form field: `file` — the image file to analyze (jpg/png). Max size ~10MB.
+
+Request behavior
+----------------
+- Send the image in the `file` form field.
+- The backend returns JSON. The frontend should validate content-type and HTTP status codes. On 200 OK, response body is JSON described below.
+- On client errors (4xx) the backend returns JSON with `error` key and a message. On server errors (5xx) return message and status code.
+
+JSON Response Schema
+--------------------
+- fecha: string|null — date in ISO yyyy-mm-dd format or null.
+- monto: number|null — normalized float amount in local currency units (decimal point as separator).
+- texto: string — full OCR text for debugging/audit.
+- merchant: string (optional) — best-guess merchant name.
+- monto_raw: string (optional) — raw token string detected (e.g., "14499,00").
+
+Example success response
+------------------------
+{
+  "fecha": null,
+  "monto": 14499.0,
+  "texto": "...full ocr text...",
+  "merchant": "ARCOS DORADOS",
+  "monto_raw": "14499,00"
+}
+
+Error handling
+--------------
+- 400 Bad Request: Missing file or invalid content-type. Response: { "error": "missing file" }
+- 413 Payload Too Large: File exceeds upload limit.
+- 500 Internal Server Error: Unexpected processing error. Response: { "error": "internal error" }
+
+Frontend responsibilities
+------------------------
+- Validate file type/size before sending.
+- Retry logic: retry once on network errors, do not retry on 4xx errors.
+- Present `texto` to a human reviewer for low-confidence results (monto null or monto_raw missing).
+
+Edge cases and formats
+----------------------
+- The backend expects spanish receipts but is not language-locked; amounts might use `,` as decimal separator. The backend normalizes to float.
+- If multiple numeric candidates exist, the backend chooses heuristically. The frontend can display `monto_raw` to show the original token.
+
+Security
+--------
+- Use HTTPS in production and set appropriate CORS origins.
+- Do not send secrets in the same request.
+
+Integration snippet (JS fetch)
+-----------------------------
+fetch('http://localhost:8000/api/ocr', {
+  method: 'POST',
+  body: (function(){ const f = new FormData(); f.append('file', file); return f })(),
+})
+.then(r => r.json())
+.then(json => {
+  // handle response
+})
+.catch(err => {
+  // handle network error
+});
