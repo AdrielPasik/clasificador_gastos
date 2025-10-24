@@ -1,72 +1,60 @@
-Frontend AI Integration Prompt
+Prompt esencial para frontend
 
-Purpose
--------
-This document tells the frontend AI how to call the OCR backend and what to expect in return. Use it as the instruction for any agent that will act as the frontend or integrator.
+Descripción rápida
+------------------
+El backend expone un endpoint OCR que recibe una imagen (form field `file`) y devuelve un JSON con los campos extraídos: `fecha` (ISO), `monto` (float), `monto_raw` (string), `merchant`, `texto`/`texto_lines` y, si se solicita, `tokens` y `monto_debug` para debugging.
 
-Endpoint
---------
-URL: http://{BACKEND_HOST}:{PORT}/api/ocr
-Method: POST
-Content-Type: multipart/form-data
-Form field: `file` — the image file to analyze (jpg/png). Max size ~10MB.
-
-Request behavior
-----------------
-- Send the image in the `file` form field.
-- The backend returns JSON. The frontend should validate content-type and HTTP status codes. On 200 OK, response body is JSON described below.
-- On client errors (4xx) the backend returns JSON with `error` key and a message. On server errors (5xx) return message and status code.
-
-JSON Response Schema
---------------------
-- fecha: string|null — date in ISO yyyy-mm-dd format or null.
-- monto: number|null — normalized float amount in local currency units (decimal point as separator).
-- texto: string — full OCR text for debugging/audit.
-- merchant: string (optional) — best-guess merchant name.
-- monto_raw: string (optional) — raw token string detected (e.g., "14499,00").
-
-Example success response
-------------------------
-{
-  "fecha": null,
-  "monto": 14499.0,
-  "texto": "...full ocr text...",
-  "merchant": "ARCOS DORADOS",
-  "monto_raw": "14499,00"
-}
-
-Error handling
+Endpoint y uso
 --------------
-- 400 Bad Request: Missing file or invalid content-type. Response: { "error": "missing file" }
-- 413 Payload Too Large: File exceeds upload limit.
-- 500 Internal Server Error: Unexpected processing error. Response: { "error": "internal error" }
+- Ruta: POST /api/ocr
+- Body: multipart/form-data con campo `file` (imagen jpg/png).
+- Query opcional: `debug_tokens=true` — incluye `tokens` y `monto_debug` en la respuesta.
 
-Frontend responsibilities
-------------------------
-- Validate file type/size before sending.
-- Retry logic: retry once on network errors, do not retry on 4xx errors.
-- Present `texto` to a human reviewer for low-confidence results (monto null or monto_raw missing).
+JSON mínimo esperado (campos clave)
+---------------------------------
+- `fecha`: string | null — ISO yyyy-mm-dd
+- `monto`: number | null — monto normalizado (float) para cálculos
+- `monto_raw`: string | null — cadena tal cual ensamblada por OCR (ej. "353,37")
+- `merchant`: string | null — comercio detectado
+- `texto`: string — texto OCR agregado
+- `texto_lines`: array[string] — texto por líneas
+- `tokens`: array[ { text, conf, left, top, width, height } ] (solo con debug_tokens)
+- `monto_debug`: array[ { chosen, parsed, method, ... } ] (explicaciones de heurísticas)
 
-Edge cases and formats
-----------------------
-- The backend expects spanish receipts but is not language-locked; amounts might use `,` as decimal separator. The backend normalizes to float.
-- If multiple numeric candidates exist, the backend chooses heuristically. The frontend can display `monto_raw` to show the original token.
+Notas sobre `tokens`
+--------------------
+- Cada token tiene `left`,`top`,`width`,`height` en píxeles relativos a la imagen original.
+- `width`/`height` pueden ser 0 o negativos; al dibujar normalizar bbox usando min/max y abs().
+- Si escalas la imagen en frontend, aplica la misma escala a las coordenadas para el overlay.
 
-Security
---------
-- Use HTTPS in production and set appropriate CORS origins.
-- Do not send secrets in the same request.
+Comportamiento recomendado en UI
+--------------------------------
+- Al enviar: mostrar spinner.
+- Al recibir: mostrar `merchant`, `fecha`, `monto` (usar `monto` para cálculos). Mostrar `monto_raw` y `monto_debug` en modo debug.
+- Proveer botón "Ver tokens" (solo si pediste `debug_tokens=true`) para overlay con colores por `conf`.
+- Permitir edición manual de `monto`, `fecha`, `merchant` y guardar la corrección; registrar `monto_raw` original.
 
-Integration snippet (JS fetch)
------------------------------
-fetch('http://localhost:8000/api/ocr', {
-  method: 'POST',
-  body: (function(){ const f = new FormData(); f.append('file', file); return f })(),
-})
-.then(r => r.json())
-.then(json => {
-  // handle response
-})
-.catch(err => {
-  // handle network error
-});
+Errores importantes
+------------------
+- 400: petición inválida (ej. falta `file`) — frontend debe avisar al usuario.
+- 413: archivo demasiado grande.
+- 500: error interno — mostrar mensaje genérico y permitir reintento.
+
+Formato de moneda
+-----------------
+- `monto` es float (ej. 353.37). Para mostrarlo con coma decimal en UI usar formateo local (Intl.NumberFormat).
+
+Recomendación para QA
+---------------------
+- Durante desarrollo activar `debug_tokens=true` y validar overlays y `monto_debug` para entender errores OCR.
+
+Ejemplo mínimo de uso (fetch):
+```js
+const fd = new FormData();
+fd.append('file', fileInput.files[0]);
+const res = await fetch('/api/ocr?debug_tokens=true', { method: 'POST', body: fd });
+const data = await res.json();
+// usar data.monto, data.monto_raw, data.tokens
+```
+
+Fin.
