@@ -818,8 +818,8 @@ def clasificar_gasto_simple(texto_clean: str = '', texto_lines=None, merchant: s
                 return catname, debug
             # fuzzy match: compare commerce name to merchant tokens and full merchant string
             try:
-                # compare against merchant tokens
-                merch_tokens = [t for t in re.split(r"\W+", ml) if t]
+                # compare against merchant tokens (ignore very short tokens to avoid false fuzzy matches)
+                merch_tokens = [t for t in re.split(r"\W+", ml) if t and len(t) >= 3]
                 for mt in merch_tokens:
                     r = difflib.SequenceMatcher(None, c, mt).ratio()
                     if r >= 0.75:

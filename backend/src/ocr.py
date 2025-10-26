@@ -772,3 +772,66 @@ def extraer_hipotesis(texto: str):
         return s
     amounts_sorted = sorted(amounts, key=score_amount, reverse=True)
     return {'amounts': amounts_sorted, 'dates': dates}
+
+
+def extraer_header_text(ruta_imagen: str) -> str:
+    """Run an aggressive OCR on the top area of the receipt to recover
+    merchant name and month words. Returns the header text (possibly multi-line).
+    """
+    img = _read_image(ruta_imagen)
+    if img is None:
+        return ""
+    h, w = img.shape[:2]
+    # crop upper 0..25% height, full width
+    y2 = max(1, int(h * 0.25))
+    roi = img[0:y2, 0:w]
+
+    # aggressive preprocessing for header: upscale, CLAHE, denoise
+    try:
+        roi_up = cv2.resize(roi, (w * 2, y2 * 2), interpolation=cv2.INTER_CUBIC)
+    except Exception:
+        roi_up = roi
+    gray = cv2.cvtColor(roi_up, cv2.COLOR_BGR2GRAY)
+    gray = _deskew(gray)
+    gray = _adjust_contrast(gray)
+    try:
+        den = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
+    except Exception:
+        den = gray
+    try:
+        th = cv2.adaptiveThreshold(den, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                   cv2.THRESH_BINARY, 11, 3)
+    except Exception:
+        _, th = cv2.threshold(den, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # try several psm modes for header (single block/line) and join results
+    header_texts = []
+    cfgs = ["--oem 3 --psm 7", "--oem 3 --psm 6", "--oem 3 --psm 11"]
+    for cfg in cfgs:
+        try:
+            t = pytesseract.image_to_string(th, lang='spa', config=cfg)
+            if t:
+                header_texts.append(t)
+        except Exception:
+            continue
+
+    # also try raw roi with same configs as fallback
+    if not header_texts:
+        for cfg in cfgs:
+            try:
+                t = pytesseract.image_to_string(roi_up, lang='spa', config=cfg)
+                if t:
+                    header_texts.append(t)
+            except Exception:
+                continue
+
+    # join unique non-empty lines
+    lines = []
+    for t in header_texts:
+        for ln in (t or '').splitlines():
+            s = ln.strip()
+            if not s:
+                continue
+            if s not in lines:
+                lines.append(s)
+    return "\n".join(lines)
