@@ -31,9 +31,20 @@ jobs:
 
       # --- 5️⃣ Empaquetar el proyecto ---
       - name: Package app
-        working-directory: .
         run: |
-          tar --exclude='venv' --exclude='.git' --exclude='app.tar.gz' -czf app.tar.gz .
+          mkdir package
+          cp -r backend src tools results app.py requirements.txt README.md package/
+          # Copiar solo si existen
+          if [ -d "backend" ]; then cp -r backend package/; fi
+          if [ -d "src" ]; then cp -r src package/; fi
+          if [ -d "tools" ]; then cp -r tools package/; fi
+          if [ -d "results" ]; then cp -r results package/; fi
+          if [ -f "app.py" ]; then cp app.py package/; fi
+          if [ -f "requirements.txt" ]; then cp requirements.txt package/; fi
+      
+          cd package
+          tar -czf ../app.tar.gz .
+          cd ..
 
       # --- 6️⃣ Subir a EC2 ---
       - name: Deploy to EC2
@@ -42,8 +53,9 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_KEY }}
-          source: "clasificador_gastos/app.tar.gz"
+          source: "app.tar.gz"
           target: "/home/ubuntu/app/"
+
 
       # --- 7️⃣ Reiniciar el servicio en EC2 ---
       - name: Restart app on EC2
