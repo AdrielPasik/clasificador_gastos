@@ -22,7 +22,7 @@ jobs:
 
       # --- 3️⃣ Instalar dependencias ---
       - name: Install dependencies
-#        working-directory: clasificador_gastos
+        working-directory: .
         run: |
           python -m venv venv
           source venv/bin/activate
@@ -31,7 +31,7 @@ jobs:
 
       # --- 5️⃣ Empaquetar el proyecto ---
       - name: Package app
-        working-directory: clasificador_gastos
+        working-directory: .
         run: |
           tar -czf app.tar.gz .
 
