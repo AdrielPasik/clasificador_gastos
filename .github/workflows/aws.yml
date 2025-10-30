@@ -33,7 +33,7 @@ jobs:
       - name: Package app
         working-directory: .
         run: |
-          tar --exclude='venv' --exclude='.git' -czf app.tar.gz .
+          tar --exclude='venv' --exclude='.git' --exclude='app.tar.gz' -czf app.tar.gz .
 
       # --- 6️⃣ Subir a EC2 ---
       - name: Deploy to EC2
