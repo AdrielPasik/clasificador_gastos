@@ -22,7 +22,7 @@ jobs:
 
       # --- 3️⃣ Instalar dependencias ---
       - name: Install dependencies
-        working-directory: clasificador_gastos
+#        working-directory: clasificador_gastos
         run: |
           python -m venv venv
           source venv/bin/activate
@@ -37,7 +37,6 @@ jobs:
 
       # --- 6️⃣ Subir a EC2 ---
       - name: Deploy to EC2
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/EC2Test'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -48,7 +47,6 @@ jobs:
 
       # --- 7️⃣ Reiniciar el servicio en EC2 ---
       - name: Restart app on EC2
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/EC2Test'
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
