@@ -33,7 +33,7 @@ jobs:
       - name: Package app
         working-directory: .
         run: |
-          tar -czf app.tar.gz .
+          tar -czf app.tar.gz clasificador_gastos
 
       # --- 6️⃣ Subir a EC2 ---
       - name: Deploy to EC2
