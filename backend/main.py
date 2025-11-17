@@ -1,7 +1,7 @@
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.src.api import router as api_router
+from src.api import router as api_router
 
 app = FastAPI(title='OCR API')
 
