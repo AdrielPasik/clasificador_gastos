@@ -11,6 +11,7 @@ from .analisis import extraer_campos
 import cv2
 import pytesseract
 import re
+import traceback
 
 router = APIRouter()
 
@@ -66,8 +67,9 @@ async def ocr_endpoint(file: UploadFile = File(...), debug_tokens: bool = False,
     except ValueError as e:
         # error al leer imagen
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
-        # error interno
+    except Exception as e:
+        logger.error("❌ Error OCR procesando imagen: %s", str(e))
+        traceback.print_exc()
         return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={'detail': 'Error interno al procesar la imagen'})
 
     try:
@@ -76,7 +78,9 @@ async def ocr_endpoint(file: UploadFile = File(...), debug_tokens: bool = False,
             campos = extraer_campos(texto, tokens=tokens)
         except TypeError:
             campos = extraer_campos(texto)
-    except Exception:
+    except Exception as e:
+        logger.error("❌ Error al analizar texto OCR: %s", str(e))
+        traceback.print_exc()
         return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={'detail': 'Error interno al analizar el texto'})
 
     # Aggressive header re-check: if merchant is unrecognized or noisy, run a
