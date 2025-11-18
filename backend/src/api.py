@@ -1,17 +1,17 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
-from fastapi import status
-from typing import Any
 import shutil
 import os
 import logging
+import traceback   # <-- ESTA LÍNEA ES LA QUE RESUELVE EL ERROR
 from .utils import unique_upload_path, is_image_mimetype
 from .ocr import extraer_texto
 from .analisis import extraer_campos
 import cv2
 import pytesseract
 import re
-import traceback
+from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi import status
+from typing import Any
 
 router = APIRouter()
 
