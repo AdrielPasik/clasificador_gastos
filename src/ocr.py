@@ -41,7 +41,7 @@ fallbacks que ayudan con tickets reales. Más adelante se puede refactorizar
 en módulos (procesamiento/analisis/utils) sin cambiar la API pública.
 """
 
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
 
 
 def run_pipeline(img_proc, psm=6):
