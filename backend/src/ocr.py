@@ -9,7 +9,7 @@ from .utils import get_tesseract_cmd
 # Configure tesseract from env or fallback
 tcmd = get_tesseract_cmd()
 if tcmd:
-    pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+    pytesseract.pytesseract.tesseract_cmd = os.getenv("TESSERACT_CMD", "/usr/bin/tesseract")
 
 
 def _read_image(path: str):
